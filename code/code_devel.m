@@ -223,11 +223,11 @@ end
 %%%
 % fnout=([rootmain,'group/ieeg_sel_brainhack.mat']);
 fnout=['D:/!!Projects/bhack_td/dat/brain.mat'];
-time=outcell{i,1}';
+time=outcell{i,1};
 X=cell2mat(outcell(:,2)');
 X=permute(X,[1 3 2]); %sensor is third dimension
 fs=outcell{1,3};
-names={'iEEG'};
+names={'iEEG1' 'iEEG2' 'iEEG3'}';
 save(fnout,'X','names','time','fs','-v7.3')
 disp(fnout)
 
@@ -249,7 +249,7 @@ disp('dat loaded')
 % save(fnout,'time_ieeg','dat_ieeg','fs_ieeg','-v7.3')
 % disp(fnout)
 X=cat(3,tmpdat.dat{1,2},tmpdat.dat{2,2});
-time=tmpdat.time';
+time=tmpdat.time'*1000;
 names=tmpdat.names(1:2);
 fs=tmpdat.fs;
 save(fnout,'X','names','time','fs','-v7.3')
@@ -293,31 +293,66 @@ fn_sem=[rootmain,'dat/sem.mat'];   %semantic models
 
 
 
-datfns={fn_ieeg fn_aco fn_sem};
-
-for i=1:length(datfns)
-    tmp=load(datfns{i});
+dat_fns={fn_ieeg fn_aco fn_sem};
+dat_nams={'eeg' 'aco' 'sem'};
+for i=1:length(dat_fns)
+    tmp=load(dat_fns{i});
     disp('---------------')
-    disp(datfns{i})
-    fn=fieldnames(tmp);
-    for j=1:length(fn)
-        str=fn{j};
-        eval(['tmps=size(tmp.',str,');'])
-        disp([str,' var of size: ',num2str(tmps)])
+    disp(dat_fns{i})
+    vn=fieldnames(tmp);
+    for j=1:length(vn)
+        varnam=vn{j};
+        varnew=[varnam,'_',dat_nams{i}];
+        eval([varnew,'=tmp.',varnam,';'])
+        if strcmp(varnam,'X')
+            eval([varnew,'=double(tmp.',varnam,');'])
+        end
+        eval(['tmps=size(',varnew,');'])
+        disp([varnew,', var of size: ',num2str(tmps)])
     end
 end
 
+clear varnew varnam vn tmp i j RESTOREDEFAULTPATH_EXECUTED tmps %clear workspace of junk
+% %%% loaded variables:
+% rootmain,'/dat/brain.mat'
+% X_eeg, var of size: 288350       1       3 % sensors in third dimension
+% fs_eeg, var of size: 1  1 %fs of iEEG data = 500 Hz
+% names_eeg, var of size: 3  1 %name of iEEG sensors
+% time_eeg, var of size: 288350       1 %time vector of iEEG data in ms
+% ---------------
+% rootmain,'/dat/aco.mat'
+% X_aco, var of size: 576499       1       5 %acoustic models in third dimension
+% fs_aco, var of size: 1  1 %fs of acoustic models = 1000 Hz
+% names_aco, var of size: 5  1 %name of acoustic models
+% time_aco, var of size: 576499       1 %time vector of acoustic models in ms
+% ---------------
+% rootmain,'/dat/sem.mat'
+% X_sem, var of size: 300001     512       2 %semantic models in third dimension
+% fs_sem, var of size: 1  1 %fs of semantic model = 500 Hz
+% names_sem, var of size: 2  1 %name of semantic models
+% time_sem, var of size: 300001       1 %time vector of semantic models in ms
 
 
 
 
+%%% let's do a very crude downsampling of acoustics data to 500 Hz
+X_aco=X_aco(1:2:end,:,:); %take one every 2 samples to go from 1000 Hz to 500 Hz
+time_aco=time_aco(1:2:end); %update time vector
+fs=500; %sampling frequency of all signals
+clear fs_aco fs_sem fs_eeg
 
 
+X_aco_diff=X_aco-[zeros(size(X_aco(1,:,:)));X_aco(1:end-1,:,:)]; %%% create temporal differential of audio features
+X_aco=cat(2,X_aco,X_aco_diff); %add differential to audio features
+names_aco=cat(1,names_aco,celfun(@(x)[x,'Diff'],names_aco)); %add name of differential of audio features
+clear X_aco_diff %clear junk
 
 
-
-
-
+%%% set critical analysis parameters
+downsampfactor=50; %do the "folding" of 50 consecutive time samples to avoid gigantic distance matrices
+nswin=60; %size of timecourse chunk in seconds
+lags_ms=[0:20:100];%feature-brain-lags considered in ms (positive = feature before brain)
+dodist=1; %do distance-based analyses, 1 = TRUE. If set to zero (FALSE) semantic models are not considered
 
 
 
