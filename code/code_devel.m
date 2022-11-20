@@ -132,7 +132,6 @@ for i = 1:length(Xs)
 end
 % clear fss tmpfs tmpdown X_aco X_sem X_eeg  %clear workspace of junk
 
-
 %%% add crude temporal differential of audio features after downsampling
 Xs{1} = cat(3,Xs{1},Xs{1}-[zeros(size(Xs{1}(1,:,:,:)));Xs{1}(1:end-1,:,:,:)]);  %referencing also 4th dimension for Paul's data
 Ns{1} = cat(1,Ns{1},celfun(@(x)[x,'Diff'],Ns{1})); %add name of differential of audio features
@@ -257,8 +256,12 @@ Ds{3}=BLG_EucDistND(permute(Xs{3},[2 1 3 4])); %put features in second dimension
 disp('Distances computed')
 toc
 
+for i=1:length(Ds) %this absolutely ignores the root of the problem, but let's ignore inf and nan values in distances, for the moment
+    Ds{i}(isinf(Ds{i}))=0;
+    Ds{i}(isnan(Ds{i}))=nanmean(Ds{i}(:));
+end
 
-
+clear tmpout tmp time_sem time_eeg time_aco tmpfs tmpdown stmp stmp2 names_sem names_aco names_eeg i j ilag fss fs_aco fs_sem fs_eeg dat_fns X_aco X_sem X_eeg Xs
 
 
 
