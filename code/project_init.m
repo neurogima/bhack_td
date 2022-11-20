@@ -25,9 +25,6 @@ disp('Default path restored')
 % end
 % 
 
-addpath(genpath('D:\!!Projects\BLG_Repo'));
-disp('BLG repo added to path')
-
 addpath(genpath([rootmain,'code/']))
 disp('Project code repo added to path')
 
