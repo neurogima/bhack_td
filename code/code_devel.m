@@ -54,7 +54,13 @@ clear varnew varnam vn tmp i j RESTOREDEFAULTPATH_EXECUTED tmps %clear workspace
 
 %%
 %%% set critical analysis parameters
-fs = 125; %target sampling frequency for all signals
+
+%%% caution: high fs, high max_time_s, low n_chunks and low ms_time_folding
+%%% and many different lags will all result in computationally intensive
+%%% analyses that will likely saturate your RAM and potentially return an
+%%% error
+
+fs = 125/4; %target sampling frequency for all signals
 
 max_time_s = 500;%maximum time of timecourse to consider for analyses (seconds)
 
@@ -303,7 +309,8 @@ for i=1:length(Ds) %this absolutely ignores the root of the problem, but let's i
     Ds{i}(isnan(Ds{i}))=nanmean(Ds{i}(:));
 end
 
-clear tmpout tmp time_sem time_eeg time_aco tmpfs tmpdown stmp stmp2 names_sem names_aco names_eeg i j ilag fss fs_aco fs_sem fs_eeg dat_fns X_aco X_sem X_eeg Xs tmpisnan tmpnanmean
+%%% clear junk from workspace
+% clear tmpout tmp time_sem time_eeg time_aco tmpfs tmpdown stmp stmp2 names_sem names_aco names_eeg i j ilag fss fs_aco fs_sem fs_eeg dat_fns X_aco X_sem X_eeg Xs tmpisnan tmpnanmean
 
 if do_zscore %do z-scoring of distances on a chunk-by-chunk basis, if requested.
     %this is recommended for cross-validation at the moment.
