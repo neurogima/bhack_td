@@ -60,7 +60,7 @@ clear varnew varnam vn tmp i j RESTOREDEFAULTPATH_EXECUTED tmps %clear workspace
 %%% analyses that will likely saturate your RAM and potentially return an
 %%% error
 
-fs = 125/4; %target sampling frequency for all signals
+fs = 125; %target sampling frequency for all signals
 
 max_time_s = 500;%maximum time of timecourse to consider for analyses (seconds)
 
@@ -389,7 +389,38 @@ for i=1:length(sensornames)
     
 end
 
-
+%%
+close all
+figure
+hold
+whichstat=1;
+ylabs={'R^2_C_V' 'r_C_V'};
+cols=[[1 0 0];[0 0 1]];
+tmp=cell2mat(Stats(:,whichstat));
+tmp=permute(tmp,[3 4 1 2]);
+size(tmp)
+oris={'left' 'right'}
+addx=[0 .4]-0.375
+for i=[1:2]
+    distributionPlot(tmp(:,1,i),'histOri',oris{i},'color',cols(i,:),'widthDiv',[2 2],...
+        'addBoxes',0,'showMM',0,'globalNorm',0,'distWidth',0.75,...
+        'xValues',[1]+addx(i));
+end
+l=legend({'acoustic models' 'semantic models'},'location','northeast','autoupdate','off');
+for i=[2:-1:1]
+    distributionPlot(tmp(:,:,i),'histOri',oris{i},'color',cols(i,:),'widthDiv',[2 2],...
+        'addBoxes',0,'showMM',0,'globalNorm',0,'distWidth',0.75,...
+        'xValues',[1:3]+addx(i));
+end
+set(gca,'xtick',1:3,'view',[90 90],'xticklabel',{'acoustic' 'semantic' 'non-responsive'})
+ylabel(ylabs{whichstat})
+xlabel('Sensor type')
+axis tight
+title('Distribution across CV folds')
+% set(gca,'xlim',[0.85 3.5])
+% distributionPlot(RSQcv_plugin(:,imod,i),'histOri','right','color',plug_colours(imod,:),'widthDiv',[2 2],...
+%                 'addBoxes',0,'showMM',0,'globalNorm',0,'distWidth',0.75,...
+%                 'xValues',imod)
 
 
 
