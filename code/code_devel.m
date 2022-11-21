@@ -56,30 +56,30 @@ clear varnew varnam vn tmp i j RESTOREDEFAULTPATH_EXECUTED tmps %clear workspace
 %%% set critical analysis parameters
 fs = 125; %target sampling frequency for all signals
 
-max_time_s = 200;%maximum time of timecourse to consider for analyses (seconds)
+max_time_s = 500;%maximum time of timecourse to consider for analyses (seconds)
 
 n_chunks = 20; %divide the signal into nchunks "independent" time-courses.
-              %GLMs will be cross-validated across these nchunks. For
-              %Paul each trial is a chunk
+%GLMs will be cross-validated across these nchunks. For
+%Paul each trial is a chunk
 
-p_chunk_out = 0.05; %proportion of chunk time points that will be removed 
-              %from the beginning (50%)/end(50%) of each chunk. Discarding some of the
-              %timepoints connecting the different chunks increases the
-              %independence of chunks, and betters the generalization.
-              %Also potentially useful if chunks are trials and onset/offset
-              %effects need to be discarded from analysis
-              
-ms_lags = 0:8:100; %feature-to-brain-lags (ms; 200 ms = the brain represents
-              %the feature 200 ms after the waveform reaches the tympanic
-              %membrane)
+p_chunk_out = 0.05; %proportion of chunk time points that will be removed
+%from the beginning (50%)/end(50%) of each chunk. Discarding some of the
+%timepoints connecting the different chunks increases the
+%independence of chunks, and betters the generalization.
+%Also potentially useful if chunks are trials and onset/offset
+%effects need to be discarded from analysis
+
+ms_lags = 0:8:500; %feature-to-brain-lags (ms; 200 ms = the brain represents
+%the feature 200 ms after the waveform reaches the tympanic
+%membrane)
 
 ms_time_folding= 100; %this is the folding trick for decreasing the size of the temporal
-             %distance matrix. Instead of computing the distance between
-             %timepoint A and timepoint B, we compute the distance between
-             %timecourse A and timecourse B, of duration ms_time_fold.
+%distance matrix. Instead of computing the distance between
+%timepoint A and timepoint B, we compute the distance between
+%timecourse A and timecourse B, of duration ms_time_fold.
 
 do_zscore = 1; %standardize distances (independently for each chunk)
-               %before computing any GLM
+%before computing any GLM
 
 
 
@@ -91,8 +91,8 @@ ns_chunk = floor(ns_max/n_chunks); %number of samples in each chunk
 ns_max = n_chunks*ns_chunk; %recompute max samples, after accounting for rounding
 
 ns_chunk_out = floor(ns_chunk*p_chunk_out); %how many samples of the chunk will be removed?
-                                      %50% from beginning, 50% from end, so
-                                      %ns_chunk_out must be even
+%50% from beginning, 50% from end, so
+%ns_chunk_out must be even
 
 ns_chunk_out = floor(ns_chunk_out/2)*2; %make ns_chunk_out even
 
@@ -112,7 +112,7 @@ Xs{1}(isinf(Xs{1}))=0; %replace inf values in acoustics with zeroes;
 %%% time samples. This is a temporary hack.
 tmpisnan=sum(isnan(X_sem),2)>0;
 for i=1:2 %give average semantic embedding for time samples without average embedding.
-         %this should be done independently for each chunk
+    %this should be done independently for each chunk
     tmpnanmean=nanmean(X_sem(:,:,i),1);
     tmpisnan=sum(isnan(X_sem(:,:,i)),2)>0;
     Xs{2}(tmpisnan,:,i)=ones(sum(tmpisnan),1)*tmpnanmean;
@@ -133,7 +133,7 @@ for i = 1:length(Xs)
         error('the ratio of the old fs to the new fs must be an integer; target fs must be < old fs')
     end
     
-    %%% apply the downsampling; 
+    %%% apply the downsampling;
     Xs{i} = Xs{i}(1:tmpdown:end,:,:,:); %referencing also 4th dimension for Paul's data
     Ts{i} = Ts{i}(1:tmpdown:end);
 end
@@ -159,7 +159,7 @@ end
 %%% OK, let's first cut the timecourses into chunks. Chunks take the role
 %%% of trials, and are concatenated in the 4th dimension of Xs matrices
 chunk_idx = reshape(1:length(Ts{1}),[ns_chunk n_chunks]); %indices to first dimension
-               % of Xs matrices, reshaped so that each chunk is in a different column
+% of Xs matrices, reshaped so that each chunk is in a different column
 
 for i=1:length(Xs)
     tmpout=[];
@@ -184,7 +184,7 @@ if ns_time_folding > 0 %if temporal folding has been requested do it
     n_time_foldings=floor(size(Xs{3},1)/ns_time_folding); %number of "foldings"
     
     %%%indices to the foldings of the temporal signal
-    foldings_idx=reshape(1:ns_time_folding*n_time_foldings,[ns_time_folding n_time_foldings])'; 
+    foldings_idx=reshape(1:ns_time_folding*n_time_foldings,[ns_time_folding n_time_foldings])';
     
     
     %%% VERY CUMBERSOME APPROACH for folding iEEG, but it shows the
@@ -203,7 +203,7 @@ if ns_time_folding > 0 %if temporal folding has been requested do it
     
     %concatenate the fold indices in one single column, then add a
     %singleton dimension after the first for the subsequent reshaping
-    tmp=permute(tmp(1:max(foldings_idx(:)),:,:,:),[1 5 2 3 4]); 
+    tmp=permute(tmp(1:max(foldings_idx(:)),:,:,:),[1 5 2 3 4]);
     
     stmp=size(tmp); %current size of matrix
     
@@ -222,8 +222,8 @@ if ns_time_folding > 0 %if temporal folding has been requested do it
     
     %%% let's then fold the acoustic and semantic time-courses
     %%% and also add the lags (to be concatenated as additional models in
-    %%% third dimension). 
-
+    %%% third dimension).
+    
     %     %%% VERY CUMBERSOME APPROACH for folding and lagging acoustics
     %     %%% and semantic models, but shows the mechanics
     %     disp('folding models in time, and adding lags')
@@ -232,7 +232,7 @@ if ns_time_folding > 0 %if temporal folding has been requested do it
     %         for ilag=1:n_lags
     %             tmpout1=[];
     %             for i=1:n_time_foldings
-    %                 tmpout1=cat(1,tmpout1,permute(Xs{acosem}(foldings_idx(i,:)+ns_lags(ilag),:,:,:),[2 1 3 4])); 
+    %                 tmpout1=cat(1,tmpout1,permute(Xs{acosem}(foldings_idx(i,:)+ns_lags(ilag),:,:,:),[2 1 3 4]));
     %                 %%%%the ns_time_folding samples are concatenated along the second dimension
     %                 disp(num2str([i acosem ilag]))
     %             end
@@ -298,7 +298,7 @@ toc
 
 %%% deal with NaNs and Infs in distance matrix
 for i=1:length(Ds) %this absolutely ignores the root of the problem, but let's ignore inf and nan values in distances, for the moment
-                   %this is a very ugly temporary hack.
+    %this is a very ugly temporary hack.
     Ds{i}(isinf(Ds{i}))=0;
     Ds{i}(isnan(Ds{i}))=nanmean(Ds{i}(:));
 end
@@ -306,14 +306,81 @@ end
 clear tmpout tmp time_sem time_eeg time_aco tmpfs tmpdown stmp stmp2 names_sem names_aco names_eeg i j ilag fss fs_aco fs_sem fs_eeg dat_fns X_aco X_sem X_eeg Xs tmpisnan tmpnanmean
 
 if do_zscore %do z-scoring of distances on a chunk-by-chunk basis, if requested.
-             %this is recommended for cross-validation at the moment.
+    %this is recommended for cross-validation at the moment.
     Ds=celfun(@zscore,Ds);
 end
 
+%%
+
+Y=Ds{3}; %iEEG data, of size [ntimepairs nsensors ntimechunks]
+Y=permute(Y,[1 4 3 2]); %iEEG data, of size [ntimepairs 1 ntimechunks nsensors]
+                        %we need this shape for the iEEG data matrix to
+                        %facilitate the GLM modelling, below
+
+% useful inline functions taken from BLG_GLM_ND used to recompute
+% cross-validated predictions of the GLM models
+fdemean=@(x) bsxfun(@minus,x,mean(x)); %demean
+fregrdem=@(x) cat(2,ones(size(x(:,1,:))),fdemean(x)); %demean and add intercept
+
+%%% we already compute the total sum of squares of each temporal chunk for
+%%% each sensor. It's used to compute the RSQ_cv, below
+SSTtest=sum(bsxfun(@minus,Y,mean(Y)).^2);
 
 
+Stats=cell(0);
+c0=clock; %current time
+for whichpred=1:2
+    
+    [BetaTrain1,~,~,~]=BLG_GLM_ND(Ds{whichpred},Y,0,0); %fit one GLM for each temporal chunk, and for each sensor
+                  %output is matrix Beta of GLM coefficients, of size:
+                  % [npredictors+1 1 ntemporalchunks nsensors];
+                  % note that BetaTrain1(1,:,:,:), is the GLM beta for the intercept
+                  % term, i.e., BetaTrain1(2,:,:,:) is the GLM beta for the first model predictor in Preds{1};
+    
+    %%% for the moment, we implement a flavour of
+    %%% leave-one-temporal-chunk-out cross-validation scheme. In
+    %%% particular, we consider as training GLM coefficients for temporal
+    %%% chunk 1 the average GLM coefficient of temporal chunks 2:n_chunks
+    %%% The particular CV scheme is likely to be revised in future
+    %%% iterations. This will however do not require drastic changes to the
+    %%% pipeline.
+    BetaTrain2=zeros(size(BetaTrain1)); %here we create the matrix of GLM coefficients averaged across training temporal chunks
+    
+    for ichunk=1:n_chunks %%% loop through temporal chunks
+        idx_train_chunks=setxor(ichunk,1:n_chunks); %indices to temporal chunks across which we will average
+                 %%% the training GLM coefficients. Excludes the current temporal chunk
+        BetaTrain2(:,:,ichunk,:)=mean(BetaTrain1(:,:,idx_train_chunks,:),3); %average betas across training temporal chunks
+    end
+    
+    
+    
+    PredTest=mtimesx(fregrdem(Ds{whichpred}),BetaTrain2); %test-set prediction based on training-set GLM betas
+    
+    SSEtest=sum(bsxfun(@minus,Y,PredTest).^2,1); %sum of squared errors for test-set prediction
+    
+    RSQ_cv=1-SSEtest./SSTtest; %cross-validated R squared
+    
+    r_cv = BLGmx_corr2(Y,PredTest); %cross-validated correlation
+    
+    Stats{whichpred,1}=RSQ_cv; %add to output cell
+    Stats{whichpred,2}=r_cv; %add to output cell
+    
+    et=etime(clock,c0); %time elapsed since beginning of this four loop
+    disp(['---All done for model: ',num2str(whichpred),' elapsed time: ',num2str(et)])
+end
 
-
+tmpstats=celfun(@(x) (mean(x,3)),Stats);
+tmp=cell2mat(tmpstats);
+sensornames={'sensitive to acoustics' 'sensitive to semantics' 'unresponsive'};
+statnames={'RSQ_cv' 'r_cv'};
+modelnames={'aco model' 'sem model'}
+for i=1:length(sensornames)
+    disp(['Sensor: ',sensornames{i}])
+    
+    t=array2table(double(tmp(:,:,i)),'VariableNames',statnames,'RowNames',modelnames);
+    disp(t)
+    
+end
 
 
 
