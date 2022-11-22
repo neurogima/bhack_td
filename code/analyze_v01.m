@@ -61,7 +61,7 @@ clear varnew varnam vn tmp i j RESTOREDEFAULTPATH_EXECUTED tmps %clear workspace
 %%% analyses that will likely saturate your RAM and potentially return an
 %%% error
 
-fs = 125; %target sampling frequency for all signals
+fs = 125/2; %target sampling frequency for all signals
 
 max_time_s = 500;%maximum time of timecourse to consider for analyses (seconds)
 
@@ -76,11 +76,11 @@ p_chunk_out = 0.05; %proportion of chunk time points that will be removed
 %Also potentially useful if chunks are trials and onset/offset
 %effects need to be discarded from analysis
 
-ms_lags = 0:8:500; %feature-to-brain-lags (ms; 200 ms = the brain represents
+ms_lags = 0:10:500; %feature-to-brain-lags (ms; 200 ms = the brain represents
 %the feature 200 ms after the waveform reaches the tympanic
 %membrane)
 
-ms_time_folding= 250; %this is the folding trick for decreasing the size of the temporal
+ms_time_folding= 100; %this is the folding trick for decreasing the size of the temporal
 %distance matrix. Instead of computing the distance between
 %timepoint A and timepoint B, we compute the distance between
 %timecourse A and timecourse B, of duration ms_time_fold.
@@ -106,6 +106,8 @@ ns_chunk_out = floor(ns_chunk_out/2)*2; %make ns_chunk_out even
 ns_lags = unique(round(ms_lags./1000.*fs)); %feature-to-brain lags in n samples
 
 n_lags = length(ns_lags); %number of considered lags
+
+ms_lags = ns_lags./fs*1000;
 
 ns_time_folding = floor(ms_time_folding/1000*fs); %folding window in n samples
 
@@ -558,10 +560,10 @@ title('Variance partitioning: Distribution across CV folds')
 
 %% do models for each different feature-to-brain lag
 
-Ds_bylag=cell(0);
+Ds_bylag=cell(0); %lag-specific distances
 for i=1:2 %loop through acoustic and semantic models
     n_features=size(Ds{i},2)/n_lags;
-    for j=1:n_lags
+    for j=1:n_lags %loop through lags
         idx=((j-1)*n_features+1):j*n_features;
         Ds_bylag{j,i}=Ds{i}(:,idx,:);
     end
@@ -587,12 +589,13 @@ fregrdem=@(x) cat(2,ones(size(x(:,1,:))),fdemean(x)); %demean and add intercept
 SSTtest=sum(bsxfun(@minus,Y,mean(Y)).^2);
 
 
-Stats=cell(0);
+Stats_bylag=cell(0);
 c0=clock; %current time
 disp('fitting GLMs')
 for whichpred=1:2
+    for whichlag=1:n_lags
     
-    [BetaTrain1,~,~,~]=BLG_GLM_ND(Ds{whichpred},Y,0,0); %fit one GLM for each temporal chunk, and for each sensor
+    [BetaTrain1,~,~,~]=BLG_GLM_ND(Ds_bylag{whichlag,whichpred},Y,0,0); %fit one GLM for each temporal chunk, and for each sensor
                   %output is matrix Beta of GLM coefficients, of size:
                   % [npredictors+1 1 ntemporalchunks nsensors];
                   % note that BetaTrain1(1,:,:,:), is the GLM beta for the intercept
@@ -615,7 +618,7 @@ for whichpred=1:2
     
     
     
-    PredTest=mtimesx(fregrdem(Ds{whichpred}),BetaTrain2); %test-set prediction based on training-set GLM betas
+    PredTest=mtimesx(fregrdem(Ds_bylag{whichlag,whichpred}),BetaTrain2); %test-set prediction based on training-set GLM betas
     
     SSEtest=sum(bsxfun(@minus,Y,PredTest).^2,1); %sum of squared errors for test-set prediction
     
@@ -623,25 +626,88 @@ for whichpred=1:2
     
     r_cv = BLGmx_corr2(Y,PredTest); %cross-validated correlation
     
-    Stats{whichpred,1}=RSQ_cv; %add to output cell
-    Stats{whichpred,2}=r_cv; %add to output cell
+    Stats_bylag{whichlag,whichpred,1}=RSQ_cv; %add to output cell
+    Stats_bylag{whichlag,whichpred,2}=r_cv; %add to output cell
     
     et=etime(clock,c0); %time elapsed since beginning of this four loop
-    disp(['---All done for model: ',num2str(whichpred),' elapsed time: ',num2str(et)])
+    disp(['---All done for model: ',num2str([whichpred whichlag]),' elapsed time: ',num2str(et)])
+    end
 end
 
-tmpstats=celfun(@(x) (prctile(x,50,3)),Stats);
-tmp=cell2mat(tmpstats);
-sensornames={'sensitive to acoustics' 'sensitive to semantics' 'unresponsive'};
-statnames={'RSQ_cv' 'r_cv'};
-modelnames={'aco model' 'sem model'};
-for i=1:length(sensornames)
-    disp(['Sensor: ',sensornames{i}])
+%% some plots
+close all
+tmprsqcv=cell2mat(Stats_bylag(:,:,1));
+tmprsqcv=permute(tmprsqcv,[3 1 2 4]); %n_chunks n_lags n_models n_sensors
+size(tmprsqcv)
+
+
+sensnam={'Sensor: sensitive to acoustic' 'Sensor: sensitive to semantic' 'Sensor: non-responsive'};
+figure
+
+whichstat=1;
+ylabs={'R^2_C_V' 'r_C_V'};
+cols=[[1 0 0];[0 0 1];[0 1 0]];
+oris={'left' 'right' 'left'}
+addx=[-0.4 0 -0.4]
+for whichsens=1:3
+    subplot(3,1,whichsens)
     
-    t=array2table(double(tmp(:,:,i)),'VariableNames',statnames,'RowNames',modelnames);
-    disp(t)
+    hold
     
+    if whichsens==1
+        for whichmodel=1:2
+            tmp=tmprsqcv(:,1,whichmodel,whichsens);
+            distributionPlot(tmp,'histOri',oris{whichmodel},'color',cols(whichmodel,:),'widthDiv',[2 2],...
+                'addBoxes',0,'showMM',0,'globalNorm',0,'distWidth',0.75,...
+                'xValues',[1]+addx(whichmodel));
+        end
+        l=legend({'acoustics model' 'semantics model'},'location','northwest','autoupdate','off');
+        
+    end
+    
+    for whichmodel=1:2
+        tmp=tmprsqcv(:,:,whichmodel,whichsens);
+        distributionPlot(tmp,'histOri',oris{whichmodel},'color',cols(whichmodel,:),'widthDiv',[2 2],...
+        'addBoxes',0,'showMM',0,'globalNorm',0,'distWidth',0.75,...
+        'xValues',[1:n_lags]+addx(whichmodel));
+    end
+    xt=get(gca,'xtick');
+    set(gca,'xtick',1:n_lags,'xticklabel',num2str(ms_lags'),'xticklabelrotation',45)
+    
+    title(sensnam{whichsens})
+    if whichsens==3
+        xlabel('Feature-to-brain lag (ms)')
+    end
+    
+    ylabel(ylabs{whichstat})
+    plot(get(gca,'xlim'),[0 0],'k--')
+    axis tight
 end
+
+%%
+oris={'left' 'right' 'left'}
+addx=[-0.4 0 -0.4]-0.375
+for i=[1:2]
+    distributionPlot(tmp(:,1,i),'histOri',oris{i},'color',cols(i,:),'widthDiv',[2 2],...
+        'addBoxes',0,'showMM',0,'globalNorm',0,'distWidth',0.75,...
+        'xValues',[1]+addx(i));
+end
+
+l=legend({'unique acoustics' 'unique semantics' 'common acoustics semantics'},'location','northeast','autoupdate','off');
+for i=[3:-1:1]
+    distributionPlot(tmp(:,:,i),'histOri',oris{i},'color',cols(i,:),'widthDiv',[2 2],...
+        'addBoxes',0,'showMM',0,'globalNorm',0,'distWidth',0.75,...
+        'xValues',[1:3]+addx(i));
+end
+
+set(gca,'xtick',1:3,'view',[90 90],'xticklabel',{'acoustic' 'semantic' 'non-responsive'})
+ylabel(ylabs{whichstat})
+xlabel('Sensor type')
+axis tight
+title('Variance partitioning: Distribution across CV folds')
+
+
+
 
 
 
