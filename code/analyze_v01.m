@@ -65,7 +65,7 @@ fs = 125; %target sampling frequency for all signals
 
 max_time_s = 500;%maximum time of timecourse to consider for analyses (seconds)
 
-n_chunks = 20; %divide the signal into nchunks "independent" time-courses.
+n_chunks = 10; %divide the signal into nchunks "independent" time-courses.
 %GLMs will be cross-validated across these nchunks. For
 %Paul each trial is a chunk
 
@@ -80,7 +80,7 @@ ms_lags = 0:8:500; %feature-to-brain-lags (ms; 200 ms = the brain represents
 %the feature 200 ms after the waveform reaches the tympanic
 %membrane)
 
-ms_time_folding= 100; %this is the folding trick for decreasing the size of the temporal
+ms_time_folding= 250; %this is the folding trick for decreasing the size of the temporal
 %distance matrix. Instead of computing the distance between
 %timepoint A and timepoint B, we compute the distance between
 %timecourse A and timecourse B, of duration ms_time_fold.
@@ -337,6 +337,7 @@ SSTtest=sum(bsxfun(@minus,Y,mean(Y)).^2);
 
 Stats=cell(0);
 c0=clock; %current time
+disp('fitting GLMs')
 for whichpred=1:2
     
     [BetaTrain1,~,~,~]=BLG_GLM_ND(Ds{whichpred},Y,0,0); %fit one GLM for each temporal chunk, and for each sensor
@@ -377,11 +378,11 @@ for whichpred=1:2
     disp(['---All done for model: ',num2str(whichpred),' elapsed time: ',num2str(et)])
 end
 
-tmpstats=celfun(@(x) (mean(x,3)),Stats);
+tmpstats=celfun(@(x) (prctile(x,50,3)),Stats);
 tmp=cell2mat(tmpstats);
 sensornames={'sensitive to acoustics' 'sensitive to semantics' 'unresponsive'};
 statnames={'RSQ_cv' 'r_cv'};
-modelnames={'aco model' 'sem model'}
+modelnames={'aco model' 'sem model'};
 for i=1:length(sensornames)
     disp(['Sensor: ',sensornames{i}])
     
@@ -391,7 +392,7 @@ for i=1:length(sensornames)
 end
 
 %% some plots
-close all
+% close all
 figure
 hold
 whichstat=1;
@@ -495,7 +496,7 @@ Stats_model3{1,1}=RSQ_cv; %add to output cell
 Stats_model3{1,2}=r_cv; %add to output cell
 
 et=etime(clock,c0); %time elapsed since beginning of this four loop
-disp(['---All done for model: ',num2str(whichpred),' elapsed time: ',num2str(et)])
+disp(['---All done for aco+sem model; elapsed time: ',num2str(et)])
 
 
 %% do variance partitioning
@@ -525,7 +526,7 @@ VarPart3=cat(1,Stats(:,:),Stats_model3(:,:)); %aggregate RSQ_CV for models 1/2/3
 
 
 %% some plots
-close all
+% close all
 figure
 hold
 whichstat=1;
@@ -553,6 +554,94 @@ ylabel(ylabs{whichstat})
 xlabel('Sensor type')
 axis tight
 title('Variance partitioning: Distribution across CV folds')
+
+
+%% do models for each different feature-to-brain lag
+
+Ds_bylag=cell(0);
+for i=1:2 %loop through acoustic and semantic models
+    n_features=size(Ds{i},2)/n_lags;
+    for j=1:n_lags
+        idx=((j-1)*n_features+1):j*n_features;
+        Ds_bylag{j,i}=Ds{i}(:,idx,:);
+    end
+end
+
+
+
+
+%% fit the distance-based GLMs, and generalize to test data
+
+Y=Ds{3}; %iEEG data, of size [ntimepairs nsensors ntimechunks]
+Y=permute(Y,[1 4 3 2]); %iEEG data, of size [ntimepairs 1 ntimechunks nsensors]
+                        %we need this shape for the iEEG data matrix to
+                        %facilitate the GLM modelling, below
+
+% useful inline functions taken from BLG_GLM_ND used to recompute
+% cross-validated predictions of the GLM models
+fdemean=@(x) bsxfun(@minus,x,mean(x)); %demean
+fregrdem=@(x) cat(2,ones(size(x(:,1,:))),fdemean(x)); %demean and add intercept
+
+%%% we already compute the total sum of squares of each temporal chunk for
+%%% each sensor. It's used to compute the RSQ_cv, below
+SSTtest=sum(bsxfun(@minus,Y,mean(Y)).^2);
+
+
+Stats=cell(0);
+c0=clock; %current time
+disp('fitting GLMs')
+for whichpred=1:2
+    
+    [BetaTrain1,~,~,~]=BLG_GLM_ND(Ds{whichpred},Y,0,0); %fit one GLM for each temporal chunk, and for each sensor
+                  %output is matrix Beta of GLM coefficients, of size:
+                  % [npredictors+1 1 ntemporalchunks nsensors];
+                  % note that BetaTrain1(1,:,:,:), is the GLM beta for the intercept
+                  % term, i.e., BetaTrain1(2,:,:,:) is the GLM beta for the first model predictor in Preds{1};
+    
+    %%% for the moment, we implement a flavour of
+    %%% leave-one-temporal-chunk-out cross-validation scheme. In
+    %%% particular, we consider as training GLM coefficients for temporal
+    %%% chunk 1 the average GLM coefficient of temporal chunks 2:n_chunks
+    %%% The particular CV scheme is likely to be revised in future
+    %%% iterations. This will however do not require drastic changes to the
+    %%% pipeline.
+    BetaTrain2=zeros(size(BetaTrain1)); %here we create the matrix of GLM coefficients averaged across training temporal chunks
+    
+    for ichunk=1:n_chunks %%% loop through temporal chunks
+        idx_train_chunks=setxor(ichunk,1:n_chunks); %indices to temporal chunks across which we will average
+                 %%% the training GLM coefficients. Excludes the current temporal chunk
+        BetaTrain2(:,:,ichunk,:)=mean(BetaTrain1(:,:,idx_train_chunks,:),3); %average betas across training temporal chunks
+    end
+    
+    
+    
+    PredTest=mtimesx(fregrdem(Ds{whichpred}),BetaTrain2); %test-set prediction based on training-set GLM betas
+    
+    SSEtest=sum(bsxfun(@minus,Y,PredTest).^2,1); %sum of squared errors for test-set prediction
+    
+    RSQ_cv=1-SSEtest./SSTtest; %cross-validated R squared
+    
+    r_cv = BLGmx_corr2(Y,PredTest); %cross-validated correlation
+    
+    Stats{whichpred,1}=RSQ_cv; %add to output cell
+    Stats{whichpred,2}=r_cv; %add to output cell
+    
+    et=etime(clock,c0); %time elapsed since beginning of this four loop
+    disp(['---All done for model: ',num2str(whichpred),' elapsed time: ',num2str(et)])
+end
+
+tmpstats=celfun(@(x) (prctile(x,50,3)),Stats);
+tmp=cell2mat(tmpstats);
+sensornames={'sensitive to acoustics' 'sensitive to semantics' 'unresponsive'};
+statnames={'RSQ_cv' 'r_cv'};
+modelnames={'aco model' 'sem model'};
+for i=1:length(sensornames)
+    disp(['Sensor: ',sensornames{i}])
+    
+    t=array2table(double(tmp(:,:,i)),'VariableNames',statnames,'RowNames',modelnames);
+    disp(t)
+    
+end
 
 
 
