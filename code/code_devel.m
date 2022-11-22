@@ -1,5 +1,4 @@
-
-%% start devel
+%% set paths, load data. Modify rootmain as required to set local paths
 
 rootmain='D:/!!Projects/bhack_td/';
 % do_ft=1;
@@ -52,7 +51,9 @@ clear varnew varnam vn tmp i j RESTOREDEFAULTPATH_EXECUTED tmps %clear workspace
 % time_sem, var of size: 300001       1 %time vector of semantic models in ms
 
 
-%%
+%% set analysis parameters, and compute the distances
+%%%
+%%%
 %%% set critical analysis parameters
 
 %%% caution: high fs, high max_time_s, low n_chunks and low ms_time_folding
@@ -317,7 +318,7 @@ if do_zscore %do z-scoring of distances on a chunk-by-chunk basis, if requested.
     Ds=celfun(@zscore,Ds);
 end
 
-%%
+%% fit the distance-based GLMs, and generalize to test data
 
 Y=Ds{3}; %iEEG data, of size [ntimepairs nsensors ntimechunks]
 Y=permute(Y,[1 4 3 2]); %iEEG data, of size [ntimepairs 1 ntimechunks nsensors]
@@ -389,7 +390,7 @@ for i=1:length(sensornames)
     
 end
 
-%%
+%% some plots
 close all
 figure
 hold
@@ -417,14 +418,141 @@ ylabel(ylabs{whichstat})
 xlabel('Sensor type')
 axis tight
 title('Distribution across CV folds')
-% set(gca,'xlim',[0.85 3.5])
-% distributionPlot(RSQcv_plugin(:,imod,i),'histOri','right','color',plug_colours(imod,:),'widthDiv',[2 2],...
-%                 'addBoxes',0,'showMM',0,'globalNorm',0,'distWidth',0.75,...
-%                 'xValues',imod)
+
+
+
+%% OK, let's do the variance partitioning to reveal the unique contribution of acoustics
+%% and semantics, as well as the common acoustics/semantics contribution to
+%% the prediction of the temporal iEEG distance
+
+%%% for the computation of the variance partitions according to the
+%%% commonality analysis equations, we need to fit three models:
+%%% 1. acoustics only
+%%% 2. semantics only
+%%% 3. acoustics+semantics
+%%% Above, we have analysed models 1. and 2. We now need to compute the CV
+%%% stats for model 3.
+
+
+
+%% fit the distance-based GLM for aco+sem model, and generalize to test data
+
+Y=Ds{3}; %iEEG data, of size [ntimepairs nsensors ntimechunks]
+Y=permute(Y,[1 4 3 2]); %iEEG data, of size [ntimepairs 1 ntimechunks nsensors]
+                        %we need this shape for the iEEG data matrix to
+                        %facilitate the GLM modelling, below
+
+% useful inline functions taken from BLG_GLM_ND used to recompute
+% cross-validated predictions of the GLM models
+fdemean=@(x) bsxfun(@minus,x,mean(x)); %demean
+fregrdem=@(x) cat(2,ones(size(x(:,1,:))),fdemean(x)); %demean and add intercept
+
+%%% we already compute the total sum of squares of each temporal chunk for
+%%% each sensor. It's used to compute the RSQ_cv, below
+SSTtest=sum(bsxfun(@minus,Y,mean(Y)).^2);
+
+X=cat(2,Ds{1},Ds{2}); %concatenate acoustic and semantic predictors along
+     % the second dimension of the predictors matrix X
 
 
 
 
+Stats_model3=cell(0);
+c0=clock; %current time
+
+[BetaTrain1,~,~,~]=BLG_GLM_ND(X,Y,0,0); %fit one GLM for each temporal chunk, and for each sensor
+%output is matrix Beta of GLM coefficients, of size:
+% [npredictors+1 1 ntemporalchunks nsensors];
+% note that BetaTrain1(1,:,:,:), is the GLM beta for the intercept
+% term, i.e., BetaTrain1(2,:,:,:) is the GLM beta for the first model predictor in Preds{1};
+
+%%% for the moment, we implement a flavour of
+%%% leave-one-temporal-chunk-out cross-validation scheme. In
+%%% particular, we consider as training GLM coefficients for temporal
+%%% chunk 1 the average GLM coefficient of temporal chunks 2:n_chunks
+%%% The particular CV scheme is likely to be revised in future
+%%% iterations. This will however do not require drastic changes to the
+%%% pipeline.
+BetaTrain2=zeros(size(BetaTrain1)); %here we create the matrix of GLM coefficients averaged across training temporal chunks
+
+for ichunk=1:n_chunks %%% loop through temporal chunks
+    idx_train_chunks=setxor(ichunk,1:n_chunks); %indices to temporal chunks across which we will average
+    %%% the training GLM coefficients. Excludes the current temporal chunk
+    BetaTrain2(:,:,ichunk,:)=mean(BetaTrain1(:,:,idx_train_chunks,:),3); %average betas across training temporal chunks
+end
+
+
+
+PredTest=mtimesx(fregrdem(X),BetaTrain2); %test-set prediction based on training-set GLM betas
+
+SSEtest=sum(bsxfun(@minus,Y,PredTest).^2,1); %sum of squared errors for test-set prediction
+
+RSQ_cv=1-SSEtest./SSTtest; %cross-validated R squared
+
+r_cv = BLGmx_corr2(Y,PredTest); %cross-validated correlation
+
+Stats_model3{1,1}=RSQ_cv; %add to output cell
+Stats_model3{1,2}=r_cv; %add to output cell
+
+et=etime(clock,c0); %time elapsed since beginning of this four loop
+disp(['---All done for model: ',num2str(whichpred),' elapsed time: ',num2str(et)])
+
+
+%% do variance partitioning
+Stats3=cat(1,Stats(:,1),Stats_model3(:,1)); %aggregate RSQ_CV for models 1/2/3
+Stats3=celfun(@squeeze,Stats3); %squeeze matrices, i.e. remove leading singleton dimensions of the matrix (e.g., first two dimensions of matrix tmp of size [1 1 3 4])
+Stats3_m=cell2mat(permute(Stats3,[3 4 1 2])); %convert cell to matrix to facilitate coding
+Stats3_m=permute(Stats3_m,[2 3 1]); %put temporal chunks last dimension
+size(Stats3_m)
+%%% Stats3_m is of size [nsensors=[aco sem nonresp],
+%%% n_models=[models1,2,3], n_temporal_chunks];
+
+%%% do variance partitioning
+VarPart3_m=zeros(size(Stats3_m));
+
+%unique(aco) = RSQ_cv(aco+sem) - RSQcv(sem)
+VarPart3_m(:,1,:)=Stats3_m(:,3,:)-Stats3_m(:,2,:); 
+
+%unique(sem) = RSQ_cv(aco+sem) - RSQcv(aco)
+VarPart3_m(:,2,:)=Stats3_m(:,3,:)-Stats3_m(:,1,:);
+
+%common(aco,sem) = RSQ_cv(aco) + RSQ_cv(sem) - RSQ_cv(aco+sem)
+VarPart3_m(:,3,:)=Stats3_m(:,1,:)+Stats3_m(:,2,:)-Stats3_m(:,3,:);
+
+% VarPart=cell(size(Stats3));
+
+VarPart3=cat(1,Stats(:,:),Stats_model3(:,:)); %aggregate RSQ_CV for models 1/2/3
+
+
+%% some plots
+close all
+figure
+hold
+whichstat=1;
+ylabs={'R^2_C_V' 'r_C_V'};
+cols=[[1 0 0];[0 0 1];[0 1 0]];
+tmp=permute(VarPart3_m,[3 1 2]);
+size(tmp)
+oris={'left' 'right' 'left'}
+addx=[-0.4 0 -0.4]-0.375
+for i=[1:3]
+    distributionPlot(tmp(:,1,i),'histOri',oris{i},'color',cols(i,:),'widthDiv',[2 2],...
+        'addBoxes',0,'showMM',0,'globalNorm',0,'distWidth',0.75,...
+        'xValues',[1]+addx(i));
+end
+
+l=legend({'unique acoustics' 'unique semantics' 'common acoustics semantics'},'location','northeast','autoupdate','off');
+for i=[3:-1:1]
+    distributionPlot(tmp(:,:,i),'histOri',oris{i},'color',cols(i,:),'widthDiv',[2 2],...
+        'addBoxes',0,'showMM',0,'globalNorm',0,'distWidth',0.75,...
+        'xValues',[1:3]+addx(i));
+end
+
+set(gca,'xtick',1:3,'view',[90 90],'xticklabel',{'acoustic' 'semantic' 'non-responsive'})
+ylabel(ylabs{whichstat})
+xlabel('Sensor type')
+axis tight
+title('Variance partitioning: Distribution across CV folds')
 
 
 
