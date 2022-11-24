@@ -228,7 +228,7 @@ X=cell2mat(outcell(:,2)');
 X=permute(X,[1 3 2]); %sensor is third dimension
 fs=outcell{1,3};
 names={'iEEG1' 'iEEG2' 'iEEG3'}';
-save(fnout,'X','names','time','fs','-v7.3')
+save(fnout,'X','names','time','fs')%,'-v7.3')
 disp(fnout)
 
 %% select semantic models data
@@ -250,7 +250,7 @@ X=cat(3,tmpdat.dat{1,2},tmpdat.dat{2,2});
 time=tmpdat.time'*1000;
 names=tmpdat.names(1:2);
 fs=tmpdat.fs;
-save(fnout,'X','names','time','fs','-v7.3')
+save(fnout,'X','names','time','fs')%,'-v7.3')
 disp(fnout)
 
 %% select acoustic models data
@@ -272,6 +272,6 @@ X=permute(tmpdat.X,[1 3 2]); %model in third dimension
 time=tmpdat.time;
 names=tmpdat.names';
 fs=tmpdat.fs;
-save(fnout,'X','names','time','fs','-v7.3')
+save(fnout,'X','names','time','fs')%,'-v7.3')
 disp(fnout)
 
