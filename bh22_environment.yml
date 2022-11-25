@@ -1,0 +1,16 @@
+name: bh22_environment
+channels:
+  - conda-forge
+dependencies:
+  - python ==3.10
+  - pip
+  - scipy
+  - numpy
+  - pandas
+  - h5py
+  - seaborn
+  - matplotlib-base
+  - nilearn
+  - nibabel
+  - ipython
+  - git
