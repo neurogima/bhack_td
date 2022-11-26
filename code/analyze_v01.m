@@ -61,7 +61,7 @@ clear varnew varnam vn tmp i j RESTOREDEFAULTPATH_EXECUTED tmps %clear workspace
 %%% analyses that will likely saturate your RAM and potentially return an
 %%% error
 
-fs = 125/2; %target sampling frequency for all signals
+fs = 125/4; %target sampling frequency for all signals
 
 max_time_s = 500;%maximum time of timecourse to consider for analyses (seconds)
 
@@ -76,7 +76,7 @@ p_chunk_out = 0.05; %proportion of chunk time points that will be removed
 %Also potentially useful if chunks are trials and onset/offset
 %effects need to be discarded from analysis
 
-ms_lags = 0:10:500; %feature-to-brain-lags (ms; 200 ms = the brain represents
+ms_lags = 100:50:500; %feature-to-brain-lags (ms; 200 ms = the brain represents
 %the feature 200 ms after the waveform reaches the tympanic
 %membrane)
 
@@ -110,6 +110,27 @@ n_lags = length(ns_lags); %number of considered lags
 ms_lags = ns_lags./fs*1000;
 
 ns_time_folding = floor(ms_time_folding/1000*fs); %folding window in n samples
+
+
+%store analysis parameters
+analysis_pars=struct([]);
+analysis_pars(1).fs = fs;
+analysis_pars.max_time_s = max_time_s;
+analysis_pars.n_chunks = n_chunks; 
+analysis_pars.p_chunk_out = p_chunk_out; 
+analysis_pars.ms_lags = ms_lags; 
+analysis_pars.ms_time_folding= ms_time_folding;
+analysis_pars.do_zscore = do_zscore; 
+analysis_pars.ns_max = ns_max;
+analysis_pars.ns_chunk = ns_chunk;
+analysis_pars.ns_chunk_out = ns_chunk_out; 
+analysis_pars.ns_lags = ns_lags;
+analysis_pars.n_lags = n_lags;
+analysis_pars_cell={fs max_time_s n_chunks p_chunk_out ms_lags ms_time_folding,...
+    do_zscore ns_max ns_chunk ns_chunk_out ns_lags n_lags}; 
+analysis_par_names={'fs' 'max_time_s' 'n_chunks' 'p_chunk_out' 'ms_lags' 'ms_time_folding',...
+    'do_zscore' 'ns_max' 'ns_chunk' 'ns_chunk_out' 'ns_lags' 'n_lags'};
+
 
 
 
