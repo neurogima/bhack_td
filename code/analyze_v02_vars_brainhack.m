@@ -9,7 +9,7 @@ run([rootmain,'code/project_init.m'])
 
 do_brainhack=1; %brainhack mode;
 
-brainhack_task = 5; %which brainhack task? 
+brainhack_task = 4; %which brainhack task? 
    %determines which intermediate variables will be loaded
 
 save_intermediate=0; %save intermediate variables
