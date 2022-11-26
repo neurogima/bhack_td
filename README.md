@@ -25,15 +25,17 @@ https://mattermost.brainhack.org/brainhack/channels/brainhack_marseille_2022_spe
 
 The main goal of this project is to translate the Matlab code into Python:
 
-- [ ] identify python libraries that can speed up the code translation effort
-- [ ] translate the temporal folding on the neural signal in Python
-- [ ] identify the python libraries to calculate different distances metrics
-  - [ ] `BLG_CosDistND.m`
-  - [ ] `BLG_EucDistND.m`
-  - [ ] `BLG_GLM_ND.m`
-- [ ] translate the cross-validation method
-- [ ] implement native plotting using the Python libraries (e.g. Seaborn, matplotlib, etc)
-- [ ] build up Documentation pages that can be rendered as "read the doc" style
+- [ ] task 0: identify python libraries that can speed up the code translation effort
+- [ ] task 1: translate preliminaries, data massaging
+- [ ] task 2: translate the temporal folding on the neural signal in Python
+- [ ] task 3: translate distance-computation metrics
+  - [ ] sub-task 3.1: translate `BLG_CosDistND.m`
+  - [ ] sub-task 3.1=2: translate `BLG_EucDistND.m`
+- [ ] task 4: translate GLM computation and cross-validation stats
+  - [ ] sub-task 4.1: translate `BLG_GLM_ND.m`
+  - [ ] sub-task 4.2: implement CV stats  
+- [ ] task 5: implement native plotting using the Python libraries (e.g. Seaborn, matplotlib, etc)
+- [ ] task unassigned: build up Documentation pages that can be rendered as "read the doc" style
 
 ## Environment preparation
 
