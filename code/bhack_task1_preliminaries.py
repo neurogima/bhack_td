@@ -98,53 +98,55 @@ for i in range(len(names_eeg)):
 
 
 
-Xs = [X_aco,X_sem,X_eeg] # %datasets: this could be a python list?
+Xs = [X_aco,X_sem,X_eeg] # %datasets
 Ts = [np.round(time_aco,decimals=0),np.round(time_sem,decimals=0),np.round(time_eeg,decimals=0)] #time vectors in ms
 #Ts = celfun(@round,Ts); %round to the nearest millisecond, eliminates very small timing vector gremlins
 Ns = [names_aco,names_sem,names_eeg] # %model/sensor names (third dimension of Xs)
 fss = [fs_aco,fs_sem,fs_eeg] # %sampling frequencies
 
 
+## In[deal with infs in acoustics and nans in semantics]:
 
-#Xs{1}(isinf(Xs{1}))=0; %replace inf values in acoustics with zeroes;
+Xs[0][np.isinf(Xs[0])]=0 #replace inf values in acoustics with zeroes;
+
+
+# replace time samples without semantic embedding with average embedding 
+# of other time samples. This is a temporary hack, should be done independently
+# for each cross-validation fold (i.e., temporal chunk)
+for i in [0,1]:
+    tmp=Xs[1][:,:,i]
+    tmpnanmean=np.nanmean(tmp,axis=0,keepdims=True)
+    idxnan=np.isnan(tmp[:,1])
+    tmp[idxnan,:]=tmpnanmean
+    Xs[1][:,:,i]=tmp
+
     
-# replace time samples without embedding with average embedding of other
-# time samples. This is a temporary hack.
-#tmpisnan=sum(isnan(X_sem),2)>0;
-#    for i=1:2 %give average semantic embedding for time samples without average embedding.
-#        %this should be done independently for each chunk
-#        tmpnanmean=nanmean(X_sem(:,:,i),1);
-#        tmpisnan=sum(isnan(X_sem(:,:,i)),2)>0;
-#        Xs{2}(tmpisnan,:,i)=ones(sum(tmpisnan),1)*tmpnanmean;
-#    end
 
 
-
-# In[]:
+## In[downsample time courses]:
 
 # let's do a very crude downsampling of data to the new sampling frequency
 for i in range(len(Xs)):
     tmpfs = fss[i] # %the sampling frequency of this signal in Xs{i}
     tmpdown = tmpfs/fs #; %down-sampling factor: take one sample every tmpdown samples
     tmpdown = tmpdown.astype(int)[0][0]
+    
     #if rem(tmpdown,1)~=0 || tmpdown<1 %if not integer or if target fs > tmpfs (upsampling)
     #     error('the ratio of the old fs to the new fs must be an integer; target fs must be < old fs')
     #end
     
     #apply the downsampling;
-    #Xs{i} = Xs{i}(1:tmpdown:end,:,:,:); %referencing also 4th dimension for Paul's data
-    #Ts{i} = Ts{i}(1:tmpdown:end);
-    print(tmpdown)
     Xs[i]=Xs[i][::tmpdown,:,:]
     Ts[i]=Ts[i][::tmpdown]
 
+print([x.shape for x in Xs])
+
+
+
+
 
 # In[add differential to acoustics features]:
-tmpacodiff=Xs[0];
-
-tmpzeroes=np.zeros(tmpaco[0:1,:,:].shape)
-tmpacodiff=np.concatenate((tmpzeroes,tmpaco),axis=0)
-tmpacodiff=tmpacodiff[1:-1,:,:]-tmpacodiff[0:-2,:,:]
+tmpacodiff=np.diff(Xs[0],n=1,prepend=0)
 Xs[0]=np.concatenate((Xs[0],tmpacodiff),axis=2)
 
 newnames=names_aco.copy()
@@ -153,63 +155,63 @@ for i in range(len(newnames)):
 Ns[0]=np.concatenate((Ns[0],newnames),axis=0)
 
 
-#tmpacodiff=np.diff(tmpacodiff, n=1, axis=0)
+print([x.shape for x in Xs])
 
-# add crude temporal differential of audio features after downsampling
-#Xs{1} = cat(3,Xs{1},Xs{1}-[zeros(size(Xs{1}(1,:,:,:)));Xs{1}(1:end-1,:,:,:)]);  %referencing also 4th dimension for Paul's data
-#Ns{1} = cat(1,Ns{1},celfun(@(x)[x,'Diff'],Ns{1})); %add name of differential of audio features
+
+# In[cut all timecourses to same duration]:
+
+
+for i in range(len(Xs)):
     
-    
+    thisns=np.min([ns_max,Ts[i].shape[0]])
+    Xs[i]=Xs[i][0:thisns,:,:]
+    Ts[i]=Ts[i][0:thisns,:]
+
+if np.sum(np.equal(Ts[0],Ts[1]))==thisns:
+    if np.sum(np.equal(Ts[0],Ts[2]))==thisns:
+        print('All good with time vectors! let''s continue')
+
+## In[create the temporal chunks]:
+
+
+chunks_idx=np.arange(Ts[0].shape[0]).astype(int)
+chunks_idx=np.reshape(chunks_idx, [ns_chunk,n_chunks], order='F')
+
+for i in range(len(Xs)):
+    for j in range(n_chunks):
+        tmp=Xs[i][chunks_idx[:,j],:,:]
+        tmp=np.expand_dims(tmp,3) #add one last singletone dimension
+        if j==0:
+            tmpout=tmp
+        else:
+            tmpout=np.concatenate((tmpout,tmp),axis=-1)
+    Xs[i]=tmpout
+
+print([x.shape for x in Xs])
 
 
 
+# In[chop out more samples for independence of data from different temporal chunks etc.]:
+
+#let's chop out ns_chunk_out/2 from beginning and end. This aids the
+#independence of data in different trials.
+inidx=np.arange(ns_chunk_out/2+1,Xs[0].shape[0]-ns_chunk_out/2+1,1,dtype=int)
+for i in range(len(Xs)):
+    Xs[i]=Xs[i][inidx,:,:,:]
+
+
+print([x.shape for x in Xs])
+
+#let's remove max(ns_lags) from end of eeg (Xs(3)) to account for the
+#maximum feature-to-brain lag
+inidx=np.arange(np.max(ns_lags),Xs[2].shape[0],1,dtype=int)
+
+Xs[2]=Xs[2][inidx,:,:,:];
+
+print([x.shape for x in Xs])
 
 
 
-
-
-
-
-
-
-# In[do the temporal folding]:
-
-if ns_time_folding>0:
-    print('OK let''s fold the time courses!')
-    n_time_foldings=np.floor(Xs[2].shape[0]/ns_time_folding); #number of "foldings"
-    
-    foldings_idx=np.arange(ns_time_folding*n_time_foldings).astype(int)
-    tmp=np.take(Xs[2],foldings_idx,axis=0)
-    stmp=tmp.shape
-    tmp=np.reshape(tmp, [stmp[0],1,stmp[1],stmp[2],stmp[3]], order='F')
-    stmp=tmp.shape
-    tmp=np.reshape(tmp,[ns_time_folding.astype(int),n_time_foldings.astype(int),stmp[2],stmp[3],stmp[4]])
-    tmp=np.transpose(tmp,[1,0,2,3,4])  #[:,:,:,:,0];
-    s=tmp.shape
-    tmp=np.reshape(tmp,[s[0],s[1]*s[2],s[3],s[4]],order='F')
-    Xs[2]=tmp;
-    print('iEEG folded')
-    
-    
-    for acosem in [0,1]:
-            for ilag in range(len(ns_lags)):
-                ns_thislag=ns_lags[ilag]
-                tmp=Xs[acosem]
-                tmp=np.take(tmp,foldings_idx+ns_thislag,axis=0)
-                stmp=tmp.shape
-                tmp=np.reshape(tmp, [stmp[0],1,stmp[1],stmp[2],stmp[3]], order='F')
-                stmp=tmp.shape
-                tmp=np.reshape(tmp,[ns_time_folding.astype(int),n_time_foldings.astype(int),stmp[2],stmp[3],stmp[4]])
-                tmp=np.transpose(tmp,[1,0,2,3,4]);
-                s=tmp.shape
-                tmp=np.reshape(tmp,[s[0],s[1]*s[2],s[3],s[4]],order='F')
-    
-                if ilag==0:
-                    tmpout=tmp;
-                else:
-                    tmpout=np.concatenate((tmpout,tmp),axis=2)
-            Xs[acosem]=tmpout
-    print('Acoustics and semantics folded!')
 
 
 
